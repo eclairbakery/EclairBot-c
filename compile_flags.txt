@@ -1,5 +1,5 @@
 -Iexternal/concord/include
 -Iexternal/concord/core
 -Iexternal/concord/gencodecs
--Isrc/include
+-Iinclude
 -std=c11
