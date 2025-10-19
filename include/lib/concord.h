@@ -1,3 +1,6 @@
+#pragma once
+
+#include "error.h"
 #include <discord.h>
 #include <log.h>
 
@@ -353,3 +356,60 @@ typedef struct discord_welcome_screen DiscordWelcomeScreen;
 typedef struct discord_welcome_screen_channel DiscordWelcomeScreenChannel;
 typedef struct discord_welcome_screen_channels DiscordWelcomeScreenChannels;
 
+typedef CCORDcode DiscordErrorCode;
+
+static inline DiscordErrorCode discord_reply_ret(DiscordClient* client, const DiscordMessage* reference, DiscordCreateMessage* params, DiscordRetMessage* ret) {
+    DiscordCreateMessage new_params = {0};
+    if (params == NULL)
+        params = &new_params;
+
+    DiscordMessageReference ref = {
+        .message_id = reference->id,
+        .channel_id = reference->channel_id,
+        .guild_id = reference->guild_id
+    };
+    params->message_reference = &ref;
+    return discord_create_message(client, reference->channel_id, params, ret);
+}
+
+static inline DiscordErrorCode discord_reply(DiscordClient* client, const DiscordMessage* reference, DiscordCreateMessage* params) {
+    return discord_reply_ret(client, reference, params, NULL);
+}
+
+static inline DiscordErrorCode discord_reply_text_ret(DiscordClient* client, const DiscordMessage* reference, const char* content, DiscordRetMessage* ret) {
+    DiscordCreateMessage params = (DiscordCreateMessage) {
+        .content = (char*) content,
+    };
+    return discord_reply_ret(client, reference, &params, ret);
+}
+
+static inline DiscordErrorCode discord_reply_text(DiscordClient* client, const DiscordMessage* reference, const char* content) {
+    return discord_reply_text_ret(client, reference, content, NULL);
+}
+
+static inline DiscordErrorCode discord_reply_embed_ret(DiscordClient* client, const DiscordMessage* reference, DiscordEmbed* embed, DiscordRetMessage* ret) {
+    static DiscordEmbeds embeds = {
+        .size = 1,
+    };
+    embeds.array = embed;
+    
+    DiscordCreateMessage params = (DiscordCreateMessage) {
+        .embeds = &embeds,
+    };
+    return discord_reply_ret(client, reference, &params, ret);
+}
+
+static inline DiscordErrorCode discord_reply_embed(DiscordClient* client, const DiscordMessage* reference, DiscordEmbed* embed) {
+    return discord_reply_embed_ret(client, reference, embed, NULL);
+}
+
+static inline DiscordErrorCode discord_reply_embeds_ret(DiscordClient* client, const DiscordMessage* reference, DiscordEmbeds embeds, DiscordRetMessage* ret) {
+    DiscordCreateMessage params = (DiscordCreateMessage) {
+        .embeds = &embeds,
+    };
+    return discord_reply_ret(client, reference, &params, ret);
+}
+
+static inline DiscordErrorCode discord_reply_embeds(DiscordClient* client, const DiscordMessage* reference, DiscordEmbeds embeds) {
+    return discord_reply_embeds_ret(client, reference, embeds, NULL);
+}

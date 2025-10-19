@@ -1,5 +1,6 @@
 -Iexternal/concord/include
 -Iexternal/concord/core
 -Iexternal/concord/gencodecs
+-Iexternal/sqlite/build_output/include
 -Iinclude
 -std=c11

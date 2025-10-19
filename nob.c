@@ -7,7 +7,7 @@
 #define NOB_IMPLEMENTATION
 #include "external/nob.h"
 
-#define CHECK(ret) do { if (ret != 0) return ret; } while (0)
+#define CHECK(call) do { int ret = call; if (ret != 0) return ret; } while (0)
 
 #define BUILD_DIR "build/"
 #define OUT_DIR "out/"
@@ -54,24 +54,90 @@ int chdir_to_project_root() {
     return chdir(getenv("__ECLAIRBOTC_PROJECT_ROOT"));
 }
 
-int build_concord(Flags* additional_compile_flags, Flags* additional_link_flags) {
-    chdir("external/concord");
+int build_sqlite3(Flags* additional_compile_flags, Flags* additional_link_flags) {
+    chdir("external/sqlite");
+    if (nob_get_file_type("./build_output") == NOB_FILE_DIRECTORY) {
+        goto add_flags;
+    }
+
+    char configure_script[PATH_MAX];
+    getcwd(configure_script, sizeof configure_script);
+    size_t cwd_len = strlen(configure_script);
+    memcpy(configure_script + cwd_len, "/configure", sizeof(configure_script) - cwd_len);
+
+    Nob_Cmd configure = {0};
+    nob_cmd_append(&configure, configure_script);
+    nob_cmd_append(&configure, "--enable-static", "--disable-shared");
+    nob_cmd_append(&configure, "--prefix=./build_output");
+
+    if (!nob_cmd_run(&configure, .async = false)) {
+        nob_log(NOB_ERROR, "Failed to build sqlite3: ./configure failed");
+        nob_cmd_free(configure);
+        goto error;
+    }
+
+    nob_cmd_free(configure);
 
     Nob_Cmd make = {0};
     nob_cmd_append(&make, "make");
 
-    if (!nob_cmd_run_sync_and_reset(&make)) {
+    if (!nob_cmd_run(&make, .async = false)) {
+        nob_log(NOB_ERROR, "Failed to build sqlite3: Makefile failed");
+        nob_cmd_free(make);
+        goto error;
+    }
+
+    nob_cmd_free(make);
+
+    Nob_Cmd make_install = {0};
+    nob_cmd_append(&make_install, "make", "install");
+
+    if (!nob_cmd_run(&make_install, .async = false)) {
+        nob_log(NOB_ERROR, "Failed to build sqlite3: Makefile failed");
+        nob_cmd_free(make_install);
+        goto error;
+    }
+
+    nob_cmd_free(make_install);
+
+add_flags:
+    nob_da_append(additional_compile_flags, "-Iexternal/sqlite/build_output/include");
+    nob_da_append(additional_link_flags, "-Lexternal/sqlite/build_output/lib");
+
+success:
+    chdir_to_project_root();
+    nob_log(NOB_INFO, "SQLite3 compiled successfully");
+    return 0;
+error:
+    chdir_to_project_root();
+    return 1;
+}
+
+
+int build_concord(Flags* additional_compile_flags, Flags* additional_link_flags) {
+    chdir("external/concord");
+    if (nob_get_file_type("./include/") == NOB_FILE_DIRECTORY && nob_get_file_type("./lib/") == NOB_FILE_DIRECTORY) {
+        goto add_flags;
+    }
+
+    Nob_Cmd make = {0};
+    nob_cmd_append(&make, "make");
+
+    if (!nob_cmd_run(&make, .async = false)) {
         nob_log(NOB_ERROR, "Failed to build concord: Makefile failed");
         goto error;
     }
 
     nob_cmd_free(make);
 
+add_flags:
     nob_da_append(additional_compile_flags, "-Iexternal/concord/include");
     nob_da_append(additional_compile_flags, "-Iexternal/concord/core");
     nob_da_append(additional_compile_flags, "-Iexternal/concord/gencodecs");
 
     nob_da_append(additional_link_flags, "-Lexternal/concord/lib");
+    nob_da_append(additional_link_flags, "-ldiscord");
+    nob_da_append(additional_link_flags, "-lcurl");
 
 success:
     chdir_to_project_root();
@@ -84,7 +150,7 @@ error:
 
 int build_external_libs(Flags* additional_compile_flags, Flags* additional_link_flags) {
     CHECK(build_concord(additional_compile_flags, additional_link_flags));
-
+    CHECK(build_sqlite3(additional_compile_flags, additional_link_flags));
     return 0;
 }
 
@@ -103,12 +169,12 @@ int build(int argc, char** argv) {
     Flags compile_flags = {0}, link_flags = {0};
     build_external_libs(&compile_flags, &link_flags);
 
-    nob_da_append(&compile_flags, "-Isrc/include");
+    nob_da_append(&compile_flags, "-Iinclude");
 
     chdir_to_project_root();
 
     Nob_File_Paths sources = {0};
-    read_entire_dir_recursive("src", &sources, strlen("str"));
+    read_entire_dir_recursive("src", &sources, strlen("src"));
 
     Nob_File_Paths objects = {0};
 
@@ -130,8 +196,7 @@ int build(int argc, char** argv) {
             if (path_normalized[i] == '/') path_normalized[i] = '_';
         }
         
-        char out_obj_path[PATH_MAX];
-        snprintf(out_obj_path, sizeof out_obj_path, "./build/%s.o", path_normalized);
+        char* out_obj_path = nob_temp_sprintf("./build/%s.o", path_normalized);
 
         if (!needs_rebuild(source_path, out_obj_path)) {
             nob_log(NOB_INFO, "Skipping %s.c (up to date)", path_normalized);
@@ -145,7 +210,7 @@ int build(int argc, char** argv) {
         nob_cc_flags(&cc);
         nob_cmd_extend(&cc, &compile_flags);
 
-        if (!nob_cmd_run_sync_and_reset(&cc)) {
+        if (!nob_cmd_run(&cc, .async = false)) {
             nob_log(NOB_ERROR, "Failed to compile %s.c", path_normalized);
             nob_cmd_free(cc);
             return 1;
@@ -154,28 +219,28 @@ int build(int argc, char** argv) {
         nob_cmd_free(cc);
         nob_da_append(&objects, out_obj_path);
     }
+    nob_da_free(compile_flags);
 
     Nob_Cmd link = {0};
     nob_cc(&link);
-    nob_cmd_extend(&link, &link_flags);
     nob_cmd_extend(&link, &objects);
+    nob_cmd_extend(&link, &link_flags);
     nob_cmd_append(&link, "-o", OUT);
 
+    nob_da_free(link_flags);
     if (!nob_cmd_run_sync_and_reset(&link)) {
         nob_log(NOB_ERROR, "Failed to link executable %s.", OUT);
+        nob_cmd_free(link);
+        return 1;
     }
 
     nob_cmd_free(link);
-
-    nob_da_free(compile_flags);
-    nob_da_free(link_flags);
-
     nob_log(NOB_INFO, "EclairBot-C compiled and linked successfully");
     return 0;
 }
 
 int main(int argc, char** argv) {
-    NOB_GO_REBUILD_URSELF(argc, argv);
+    // NOB_GO_REBUILD_URSELF(argc, argv);
 
     if (argc == 1) {
         CHECK(build(argc, argv));
