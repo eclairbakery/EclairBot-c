@@ -1,3 +1,5 @@
+#include "bot/event_handlers/ready.h"
+#include "discord-events.h"
 #include <bot/bot.h>
 #include <bot/event_handlers/message_create.h>
 
@@ -16,6 +18,7 @@ void bot_init(Bot* bot, const char* token) {
 
     discord_set_data(bot->client, bot);
     discord_set_on_message_create(bot->client, bot_on_message_create);
+    discord_set_on_ready(bot->client, bot_on_ready);
 }
 
 void bot_run(Bot* bot) {

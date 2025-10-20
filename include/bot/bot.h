@@ -9,3 +9,5 @@ typedef struct Bot {
 void bot_init(Bot* bot, const char* token);
 void bot_run(Bot* bot);
 void bot_deinit(Bot* bot);
+
+extern Bot bot;

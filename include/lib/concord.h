@@ -1,8 +1,9 @@
 #pragma once
 
-#include "error.h"
 #include <discord.h>
-#include <log.h>
+#include <defs.h>
+
+#include <memory.h> // for memcpy
 
 typedef struct discord DiscordClient;
 
@@ -16,6 +17,8 @@ typedef struct discord_embed_field DiscordEmbedField;
 typedef struct discord_embed_fields DiscordEmbedFields;
 
 #define DISCORD_EMBED_FIELDS(...) ((DiscordEmbedFields) { .size = sizeof((DiscordEmbedField[]) { __VA_ARGS__ }), .array = ((DiscordEmbedField[]) { __VA_ARGS__ }) })
+
+#define DISCORD_MESSAGE_CONTENT_MAX_LEN 4000
 
 typedef struct discord_activities DiscordActivities;
 typedef struct discord_activity DiscordActivity;
@@ -358,6 +361,13 @@ typedef struct discord_welcome_screen_channels DiscordWelcomeScreenChannels;
 
 typedef CCORDcode DiscordErrorCode;
 
+typedef u64snowflake DiscordSnowflake;
+
+typedef DiscordSnowflake DiscordGuildID;
+typedef DiscordSnowflake DiscordChannelID;
+typedef DiscordSnowflake DiscordUserID;
+typedef DiscordSnowflake DiscordRoleID;
+
 static inline DiscordErrorCode discord_reply_ret(DiscordClient* client, const DiscordMessage* reference, DiscordCreateMessage* params, DiscordRetMessage* ret) {
     DiscordCreateMessage new_params = {0};
     if (params == NULL)
@@ -383,8 +393,26 @@ static inline DiscordErrorCode discord_reply_text_ret(DiscordClient* client, con
     return discord_reply_ret(client, reference, &params, ret);
 }
 
+
 static inline DiscordErrorCode discord_reply_text(DiscordClient* client, const DiscordMessage* reference, const char* content) {
     return discord_reply_text_ret(client, reference, content, NULL);
+}
+
+static inline DiscordErrorCode discord_reply_text_with_len_ret(DiscordClient* client, const DiscordMessage* reference, const char* content, size_t len, DiscordRetMessage* ret) {
+    if (len > DISCORD_MESSAGE_CONTENT_MAX_LEN) return CCORD_BAD_PARAMETER;
+
+    char buf[DISCORD_MESSAGE_CONTENT_MAX_LEN + 1];
+    memcpy(buf, content, len);
+    buf[len] = '\0';
+
+    DiscordCreateMessage params = {
+        .content = buf,
+    };
+    return discord_reply_ret(client, reference, &params, ret);
+}
+
+static inline DiscordErrorCode discord_reply_text_with_len(DiscordClient* client, const DiscordMessage* reference, const char* content, size_t len) {
+    return discord_reply_text_with_len_ret(client, reference, content, len, NULL);
 }
 
 static inline DiscordErrorCode discord_reply_embed_ret(DiscordClient* client, const DiscordMessage* reference, DiscordEmbed* embed, DiscordRetMessage* ret) {
@@ -412,4 +440,72 @@ static inline DiscordErrorCode discord_reply_embeds_ret(DiscordClient* client, c
 
 static inline DiscordErrorCode discord_reply_embeds(DiscordClient* client, const DiscordMessage* reference, DiscordEmbeds embeds) {
     return discord_reply_embeds_ret(client, reference, embeds, NULL);
+}
+
+
+static inline DiscordErrorCode discord_send_ret(DiscordClient* client, u64snowflake channel_id, DiscordCreateMessage* params, DiscordRetMessage* ret) {
+    DiscordCreateMessage new_params = {0};
+    if (params == NULL)
+        params = &new_params;
+
+    return discord_create_message(client, channel_id, params, ret);
+}
+
+static inline DiscordErrorCode discord_send(DiscordClient* client, u64snowflake channel_id, DiscordCreateMessage* params) {
+    return discord_send_ret(client, channel_id, params, NULL);
+}
+
+static inline DiscordErrorCode discord_send_text_ret(DiscordClient* client, u64snowflake channel_id, const char* content, DiscordRetMessage* ret) {
+    DiscordCreateMessage params = (DiscordCreateMessage) {
+        .content = (char*) content,
+    };
+    return discord_send_ret(client, channel_id, &params, ret);
+}
+
+static inline DiscordErrorCode discord_send_text(DiscordClient* client, u64snowflake channel_id, const char* content) {
+    return discord_send_text_ret(client, channel_id, content, NULL);
+}
+
+static inline DiscordErrorCode discord_send_embed_ret(DiscordClient* client, u64snowflake channel_id, DiscordEmbed* embed, DiscordRetMessage* ret) {
+    static DiscordEmbeds embeds = {
+        .size = 1,
+    };
+    embeds.array = embed;
+    
+    DiscordCreateMessage params = (DiscordCreateMessage) {
+        .embeds = &embeds,
+    };
+    return discord_send_ret(client, channel_id, &params, ret);
+}
+
+static inline DiscordErrorCode discord_send_embed(DiscordClient* client, u64snowflake channel_id, DiscordEmbed* embed) {
+    return discord_send_embed_ret(client, channel_id, embed, NULL);
+}
+
+static inline DiscordErrorCode discord_send_embeds_ret(DiscordClient* client, u64snowflake channel_id, DiscordEmbeds embeds, DiscordRetMessage* ret) {
+    DiscordCreateMessage params = (DiscordCreateMessage) {
+        .embeds = &embeds,
+    };
+    return discord_send_ret(client, channel_id, &params, ret);
+}
+
+static inline DiscordErrorCode discord_send_embeds(DiscordClient* client, u64snowflake channel_id, DiscordEmbeds embeds) {
+    return discord_send_embeds_ret(client, channel_id, embeds, NULL);
+}
+
+static inline DiscordErrorCode discord_send_text_with_len_ret(DiscordClient* client, u64snowflake channel_id, const char* content, size_t len, DiscordRetMessage* ret) {
+    if (len > DISCORD_MESSAGE_CONTENT_MAX_LEN) return CCORD_BAD_PARAMETER;
+
+    char buf[DISCORD_MESSAGE_CONTENT_MAX_LEN + 1];
+    memcpy(buf, content, len);
+    buf[len] = '\0';
+
+    DiscordCreateMessage params = {
+        .content = buf,
+    };
+    return discord_send_ret(client, channel_id, &params, ret);
+}
+
+static inline DiscordErrorCode discord_send_text_with_len(DiscordClient* client, u64snowflake channel_id, const char* content, size_t len) {
+    return discord_send_text_with_len_ret(client, channel_id, content, len, NULL);
 }
